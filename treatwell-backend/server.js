@@ -1,21 +1,27 @@
 const express = require("express");
-const { ApolloServer, gql } = require("apollo-server-express");
+const {
+  ApolloServer,
+  gql,
+  UserInputError,
+  ApolloError,
+  ForbiddenError,
+  PubSub,
+} = require("apollo-server-express");
+const http = require("http");
+
 const mongoose = require("mongoose");
-const { PubSub } = require("apollo-server");
-const pubsub = new PubSub();
+
+const { Server: WebSocketServer } = require("ws");
 
 const COIFFEUR_UPDATED = "COIFFEUR_UPDATED";
 
-// Define the Express app instance
 const app = express();
-const port = process.env.PORT || 4000; // Use the port from environment variables or default to 4000
+const port = process.env.PORT || 4000;
 
-// Import your Coiffeur model here
 const Coiffeur = require("./models/Coiffeur");
 
 require("dotenv").config();
 
-// Connect to MongoDB here
 mongoose
   .connect(process.env.MONGODB_URI, {
     // useNewUrlParser: true,
@@ -24,15 +30,32 @@ mongoose
   .then(() => console.log("MongoDB Connected"))
   .catch((err) => console.error(err));
 
-// Define your GraphQL schema (types and resolvers)
+// const pubsub = new PubSub();
+const pubsub = PubSub;
+
 const typeDefs = gql`
   type Slot {
-    slotNumber: Int
+    slotNumber: Int!
+    name: String
+    phoneNumber: String
+    email: String
+    reservationId: ID!
   }
 
   type Day {
     date: String
-    slots: [Int]
+    slots: [Slot]
+  }
+  input SlotInput {
+    slotNumber: Int!
+    name: String
+    phoneNumber: String
+    email: String
+  }
+
+  input DayInput {
+    date: String
+    slots: [SlotInput]
   }
 
   type Coiffeur {
@@ -64,9 +87,13 @@ const typeDefs = gql`
       joursTravail: [DayInput]
     ): Coiffeur
 
-    updateSlots(coiffeurId: ID!, date: String!, slots: [Int]!): Coiffeur
-
-    addDayWithSlots(coiffeurId: ID!, date: String!, slots: [Int]!): Coiffeur
+    bookSlots(coiffeurId: ID!, date: String!, slots: [SlotInput!]!): Coiffeur
+    cancelReservation(
+      coiffeurId: ID!
+      date: String!
+      reservationId: ID!
+      email: String!
+    ): Coiffeur
   }
 
   type CoiffeurUpdatePayload {
@@ -77,14 +104,8 @@ const typeDefs = gql`
   type Subscription {
     coiffeurUpdated: CoiffeurUpdatePayload
   }
-
-  input DayInput {
-    date: String
-    slots: [Int]
-  }
 `;
 
-// Define your GraphQL resolvers to handle requests
 const resolvers = {
   Query: {
     coiffeurs: async () => {
@@ -106,7 +127,6 @@ const resolvers = {
   Mutation: {
     addCoiffeur: async (_, { nom, prenom, urlImage, joursTravail }) => {
       try {
-        // Ensure joursTravail dates are properly formatted as Date objects
         const formattedJoursTravail = joursTravail.map((jour) => ({
           date: new Date(jour.date),
           slots: jour.slots,
@@ -146,105 +166,120 @@ const resolvers = {
         throw new Error("Error updating coiffeur.");
       }
     },
-    updateSlots: async (_, { coiffeurId, date, slots }) => {
+    bookSlots: async (_, { coiffeurId, date, slots }) => {
       try {
         const coiffeur = await Coiffeur.findById(coiffeurId);
 
         if (!coiffeur) {
-          throw new Error("Coiffeur not found.");
+          throw new ApolloError("Coiffeur not found.", "404");
+        }
+
+        let day = coiffeur.joursTravail.find(
+          (day) => day.date.toISOString().split("T")[0] === date
+        );
+
+        if (!day) {
+          day = { date: new Date(date), slots: [] };
+          coiffeur.joursTravail.push(day);
+        }
+
+        const alreadyBookedSlots = slots.filter((slot) =>
+          day.slots.some((s) => s.slotNumber === slot.slotNumber && s.name)
+        );
+
+        if (alreadyBookedSlots.length > 0) {
+          const bookedSlotNumbers = alreadyBookedSlots
+            .map((slot) => slot.slotNumber)
+            .join(", ");
+          throw new UserInputError(
+            `Slot(s) ${bookedSlotNumbers} on ${date} are already booked.`
+          );
+        }
+
+        slots.forEach((slot) => {
+          const slotIndex = day.slots.findIndex(
+            (s) => s.slotNumber === slot.slotNumber
+          );
+
+          if (slotIndex !== -1) {
+            day.slots[slotIndex] = {
+              ...slot,
+              reservationId: new mongoose.Types.ObjectId().toString(),
+            };
+          } else {
+            day.slots.push({
+              ...slot,
+              reservationId: new mongoose.Types.ObjectId().toString(),
+            });
+          }
+        });
+
+        await coiffeur.save();
+
+        return coiffeur;
+      } catch (error) {
+        if (error instanceof ApolloError || error instanceof UserInputError) {
+          throw error;
+        } else {
+          console.error("Error booking slots:", error);
+          throw new ApolloError("Failed to book slots.", "400");
+        }
+      }
+    },
+    cancelReservation: async (
+      _,
+      { coiffeurId, date, reservationId, email }
+    ) => {
+      try {
+        const coiffeur = await Coiffeur.findOne({
+          _id: coiffeurId,
+          "joursTravail.date": new Date(date),
+        });
+
+        if (!coiffeur) {
+          throw new Error(
+            `Coiffeur with ID ${coiffeurId} does not have work on the specified date.`
+          );
         }
 
         const dayIndex = coiffeur.joursTravail.findIndex(
           (day) => day.date.toISOString().split("T")[0] === date
         );
 
-        if (dayIndex > -1) {
-          // Check for any slots that are already taken
-          const existingSlots = coiffeur.joursTravail[dayIndex].slots;
-          const slotsTaken = slots.some((slot) => existingSlots.includes(slot));
-
-          if (slotsTaken) {
-            throw new Error("One or more slots are already taken.");
-          }
-
-          // If none of the slots are taken, add the new slots
-          coiffeur.joursTravail[dayIndex].slots.push(...slots);
-        } else {
-          // If the day doesn't exist, add a new day with the slots
-          coiffeur.joursTravail.push({ date: new Date(date), slots });
+        if (dayIndex === -1) {
+          throw new Error(`No slots found for the specified date.`);
         }
 
-        await coiffeur.save();
-        // return coiffeur;
-        const updatedCoiffeur = coiffeur;
-
-        // Publish the update
-        pubsub.publish(COIFFEUR_UPDATED, {
-          coiffeurUpdated: {
-            coiffeurId,
-            updateType: "SLOTS_UPDATED",
-            coiffeur: updatedCoiffeur,
-          },
-        });
-
-        return updatedCoiffeur;
-      } catch (error) {
-        console.error("Original error:", error);
-        throw new Error("Failed to update slots.");
-      }
-    },
-
-    addDayWithSlots: async (_, { coiffeurId, date, slots }) => {
-      try {
-        const coiffeur = await Coiffeur.findById(coiffeurId);
-
-        if (!coiffeur) {
-          throw new Error("Coiffeur not found.");
-        }
-
-        const existingDayIndex = coiffeur.joursTravail.findIndex(
-          (day) => day.date.toISOString().split("T")[0] === date
+        const slotIndex = coiffeur.joursTravail[dayIndex].slots.findIndex(
+          (s) => s.reservationId === reservationId && s.email === email
         );
 
-        if (existingDayIndex > -1) {
-          // The day already exists, check if any new slots are already taken
-          const existingSlots = coiffeur.joursTravail[existingDayIndex].slots;
-          const slotsTaken = slots.some((slot) => existingSlots.includes(slot));
-
-          if (slotsTaken) {
-            throw new Error("One or more slots are already taken.");
-          }
-
-          // If none of the slots are taken, you could choose to merge the new slots here
-          // coiffeur.joursTravail[existingDayIndex].slots.push(...slots);
-          // Or decide to not update the slots since the day already exists
-          throw new Error("Day already exists. Slots were not updated.");
-        } else {
-          // Add the new day with slots since it doesn't exist
-          coiffeur.joursTravail.push({ date: new Date(date), slots });
+        if (slotIndex === -1) {
+          throw new Error(
+            `No reservation found with the provided ID and email.`
+          );
         }
 
+        coiffeur.joursTravail[dayIndex].slots.splice(slotIndex, 1);
+
         await coiffeur.save();
-        // return coiffeur;
 
-        const updatedCoiffeur = coiffeur;
-
-        // Publish the update
         pubsub.publish(COIFFEUR_UPDATED, {
           coiffeurUpdated: {
             coiffeurId,
-            updateType: "DATE_ADDED",
-            coiffeur: updatedCoiffeur,
+            updateType: "SLOT_CANCELED",
+            coiffeur: coiffeur,
           },
         });
 
-        return updatedCoiffeur;
+        return coiffeur;
       } catch (error) {
-        console.error("Original error:", error);
-        throw new Error("Failed to add day with slots.");
+        console.error("Error canceling reservation:", error);
+        throw new Error("Failed to cancel reservation.");
       }
     },
   },
+
   Subscription: {
     coiffeurUpdated: {
       subscribe: () => pubsub.asyncIterator([COIFFEUR_UPDATED]),
@@ -252,27 +287,36 @@ const resolvers = {
   },
 };
 
-// Create an instance of ApolloServer
 const server = new ApolloServer({
   typeDefs,
   resolvers,
 });
 
-// The function to start the server and apply middleware
+const httpServer = http.createServer(app);
+const wsServer = new WebSocketServer({ server: httpServer });
+
 async function startServer() {
-  // Start the Apollo server
   await server.start();
 
-  // Apply the Apollo server middleware to the Express application
   server.applyMiddleware({ app });
 
-  // Start listening with the Express app
-  app.listen(port, () => {
+  httpServer.listen(port, () => {
     console.log(
       `Server running at http://localhost:${port}${server.graphqlPath}`
     );
   });
+
+  wsServer.on("connection", (ws) => {
+    console.log("WebSocket client connected");
+
+    ws.on("message", (message) => {
+      console.log(`Received message: ${message}`);
+    });
+
+    ws.on("close", () => {
+      console.log("WebSocket client disconnected");
+    });
+  });
 }
 
-// Call the function to start the server
 startServer();

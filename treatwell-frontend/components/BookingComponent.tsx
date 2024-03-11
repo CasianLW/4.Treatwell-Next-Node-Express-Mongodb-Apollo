@@ -1,35 +1,41 @@
-import React from "react";
+import React, { FC, useState } from "react";
 import { useBookSlots } from "@/hooks/useBookSlots";
+import { ISlot } from "@/types/Coiffeur";
+import moment from "moment";
 
-const BookingComponent = () => {
-  const { bookSlots, data, loading, error } = useBookSlots();
+type BookingProps = {
+  date: Date;
+  coiffeurId: string;
+  slots: ISlot[];
+};
+
+const BookingComponent: FC<BookingProps> = ({ coiffeurId, date, slots }) => {
+  const { bookSlots, data, loading } = useBookSlots();
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleBookSlots = () => {
+    setErrorMessage(""); // Reset error message before trying to book slots
     bookSlots({
       variables: {
-        coiffeurId: "65e8fb76fe5f9f0740253a42",
-        date: "2023-01-01", // Example date
-        slots: [
-          {
-            slotNumber: 1,
-            name: "John Doe",
-            phoneNumber: "123456789",
-            email: "john@example.com",
-          },
-          // Add more slots as needed
-        ],
+        coiffeurId: coiffeurId,
+        date: moment(date).format("YYYY-MM-DD"),
+        slots: slots,
       },
+    }).catch((error) => {
+      // Handle error here if bookSlots fails
+      setErrorMessage(error.message);
+      setTimeout(() => {
+        setErrorMessage(""); // Hide error message after 5 seconds
+      }, 5000);
     });
   };
-
-  if (loading) return <p>Booking slots...</p>;
-  if (error) return <p>Error booking slots: {error.message}</p>;
 
   return (
     <div>
       <button onClick={handleBookSlots}>Book Slots</button>
+      {loading && <p>Booking slots...</p>}
       {data && <p>Booking successful!</p>}
-      {/* You can expand this section to display more booking information */}
+      {errorMessage && <div className="error-message">{errorMessage}</div>}
     </div>
   );
 };

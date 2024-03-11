@@ -5,7 +5,7 @@ const {
   UserInputError,
   ApolloError,
   ForbiddenError,
-  PubSub,
+  // PubSub,
 } = require("apollo-server-express");
 const http = require("http");
 
@@ -19,6 +19,7 @@ const app = express();
 const port = process.env.PORT || 4000;
 
 const Coiffeur = require("./models/Coiffeur");
+const { PubSub } = require("graphql-subscriptions");
 
 require("dotenv").config();
 
@@ -30,8 +31,8 @@ mongoose
   .then(() => console.log("MongoDB Connected"))
   .catch((err) => console.error(err));
 
-// const pubsub = new PubSub();
-const pubsub = PubSub;
+const pubsub = new PubSub();
+// const pubsub = PubSub;
 
 const typeDefs = gql`
   type Slot {
@@ -166,66 +167,152 @@ const resolvers = {
         throw new Error("Error updating coiffeur.");
       }
     },
+    // bookSlots: async (_, { coiffeurId, date, slots }) => {
+    //   try {
+    //     const coiffeur = await Coiffeur.findById(coiffeurId);
+
+    //     if (!coiffeur) {
+    //       throw new ApolloError("Coiffeur not found.", "404");
+    //     }
+    //     if (slots.length === 0) {
+    //       throw new UserInputError("At least one slot must be provided.");
+    //     }
+
+    //     let day = coiffeur.joursTravail.find(
+    //       (day) => day.date.toISOString().split("T")[0] === date
+    //     );
+
+    //     if (!day) {
+    //       day = { date: new Date(date), slots: [] };
+    //       coiffeur.joursTravail.push(day);
+    //     }
+
+    //     const alreadyBookedSlots = slots.filter((slot) =>
+    //       day.slots.some((s) => s.slotNumber === slot.slotNumber && s.name)
+    //     );
+
+    //     if (alreadyBookedSlots.length > 0) {
+    //       const bookedSlotNumbers = alreadyBookedSlots
+    //         .map((slot) => slot.slotNumber)
+    //         .join(", ");
+    //       throw new UserInputError(
+    //         `Slot(s) ${bookedSlotNumbers} on ${date} are already booked.`
+    //       );
+    //     }
+
+    //     slots.forEach((slot) => {
+    //       const slotIndex = day.slots.findIndex(
+    //         (s) => s.slotNumber === slot.slotNumber
+    //       );
+
+    //       if (slotIndex !== -1) {
+    //         day.slots[slotIndex] = {
+    //           ...slot,
+    //           reservationId: new mongoose.Types.ObjectId().toString(),
+    //         };
+    //       } else {
+    //         day.slots.push({
+    //           ...slot,
+    //           reservationId: new mongoose.Types.ObjectId().toString(),
+    //         });
+    //       }
+    //     });
+
+    //     await coiffeur.save();
+
+    //     return coiffeur;
+    //   } catch (error) {
+    //     if (error instanceof ApolloError || error instanceof UserInputError) {
+    //       throw error;
+    //     } else {
+    //       console.error("Error booking slots:", error);
+    //       throw new ApolloError("Failed to book slots.", "400");
+    //     }
+    //   }
+    // },
+
     bookSlots: async (_, { coiffeurId, date, slots }) => {
       try {
-        const coiffeur = await Coiffeur.findById(coiffeurId);
+        if (slots.length === 0) {
+          throw new UserInputError("Slots array cannot be empty.", {
+            errorCode: 400,
+          });
+        }
 
+        const coiffeur = await Coiffeur.findById(coiffeurId);
         if (!coiffeur) {
           throw new ApolloError("Coiffeur not found.", "404");
         }
 
+        const dateObj = new Date(date);
         let day = coiffeur.joursTravail.find(
-          (day) => day.date.toISOString().split("T")[0] === date
+          (d) =>
+            d.date.toISOString().split("T")[0] ===
+            dateObj.toISOString().split("T")[0]
         );
 
         if (!day) {
-          day = { date: new Date(date), slots: [] };
+          // Day does not exist, so create it with slots
+          day = {
+            date: dateObj,
+            slots: slots.map((slot) => ({
+              ...slot,
+              reservationId: new mongoose.Types.ObjectId().toString(),
+            })),
+          };
           coiffeur.joursTravail.push(day);
+        } else {
+          // Day exists, update or add new slots to the day
+          slots.forEach((inputSlot) => {
+            const existingSlotIndex = day.slots.findIndex(
+              (s) => s.slotNumber === inputSlot.slotNumber
+            );
+            if (existingSlotIndex >= 0) {
+              // Slot exists, update it if not already booked
+              if (day.slots[existingSlotIndex].name) {
+                throw new UserInputError(
+                  `Slot number ${inputSlot.slotNumber} is already booked.`
+                );
+              }
+              day.slots[existingSlotIndex] = {
+                ...inputSlot,
+                reservationId: day.slots[existingSlotIndex].reservationId,
+              };
+            } else {
+              // Slot does not exist, add new slot
+              day.slots.push({
+                ...inputSlot,
+                reservationId: new mongoose.Types.ObjectId().toString(),
+              });
+            }
+          });
         }
-
-        const alreadyBookedSlots = slots.filter((slot) =>
-          day.slots.some((s) => s.slotNumber === slot.slotNumber && s.name)
-        );
-
-        if (alreadyBookedSlots.length > 0) {
-          const bookedSlotNumbers = alreadyBookedSlots
-            .map((slot) => slot.slotNumber)
-            .join(", ");
-          throw new UserInputError(
-            `Slot(s) ${bookedSlotNumbers} on ${date} are already booked.`
-          );
-        }
-
-        slots.forEach((slot) => {
-          const slotIndex = day.slots.findIndex(
-            (s) => s.slotNumber === slot.slotNumber
-          );
-
-          if (slotIndex !== -1) {
-            day.slots[slotIndex] = {
-              ...slot,
-              reservationId: new mongoose.Types.ObjectId().toString(),
-            };
-          } else {
-            day.slots.push({
-              ...slot,
-              reservationId: new mongoose.Types.ObjectId().toString(),
-            });
-          }
+        console.log(`Publishing update for coiffeurId: ${coiffeurId}`);
+        console.log(`Coiffeur object: ${coiffeur}`);
+        // Publish the entire coiffeur object
+        pubsub.publish(COIFFEUR_UPDATED, {
+          coiffeurUpdated: {
+            coiffeurId,
+            updateType: "SLOTS_UPDATED", // Or any relevant update type
+            coiffeur, // The entire updated coiffeur object
+          },
         });
-
         await coiffeur.save();
 
         return coiffeur;
       } catch (error) {
+        console.error("Error booking slots:", error);
         if (error instanceof ApolloError || error instanceof UserInputError) {
           throw error;
         } else {
-          console.error("Error booking slots:", error);
-          throw new ApolloError("Failed to book slots.", "400");
+          throw new ApolloError(
+            "An unexpected error occurred while booking slots.",
+            "500"
+          );
         }
       }
     },
+
     cancelReservation: async (
       _,
       { coiffeurId, date, reservationId, email }
@@ -262,7 +349,7 @@ const resolvers = {
 
         coiffeur.joursTravail[dayIndex].slots.splice(slotIndex, 1);
 
-        await coiffeur.save();
+        console.log(`Publishing update for coiffeurId: ${coiffeurId}`);
 
         pubsub.publish(COIFFEUR_UPDATED, {
           coiffeurUpdated: {
@@ -271,7 +358,7 @@ const resolvers = {
             coiffeur: coiffeur,
           },
         });
-
+        await coiffeur.save();
         return coiffeur;
       } catch (error) {
         console.error("Error canceling reservation:", error);
@@ -282,7 +369,10 @@ const resolvers = {
 
   Subscription: {
     coiffeurUpdated: {
-      subscribe: () => pubsub.asyncIterator([COIFFEUR_UPDATED]),
+      subscribe: () => {
+        console.log("Client subscribed to coiffeur updates");
+        return pubsub.asyncIterator([COIFFEUR_UPDATED]);
+      },
     },
   },
 };

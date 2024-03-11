@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { v4: uuidv4 } = require("uuid");
 
 const slotSchema = new mongoose.Schema({
   slotNumber: {
@@ -11,12 +12,19 @@ const slotSchema = new mongoose.Schema({
   reservationId: {
     type: String,
     default: function () {
-      // This function generates a random string for the reservation ID
-      // You can replace this logic with any ID generation logic you prefer
-      return Math.random().toString(36).substr(2, 9);
+      return uuidv4(); // Generates a universally unique identifier
     },
-    unique: true, // Make sure the reservation ID is unique across all documents
+    unique: true,
   },
+  // reservationId: {
+  //   type: String,
+  //   default: function () {
+  //     // This function generates a random string for the reservation ID
+  //     // You can replace this logic with any ID generation logic you prefer
+  //     return Math.random().toString(36).substr(2, 9);
+  //   },
+  //   unique: true, // Make sure the reservation ID is unique across all documents
+  // },
 });
 
 // const daySchema = new mongoose.Schema({
@@ -32,6 +40,7 @@ const daySchema = new mongoose.Schema({
   date: {
     type: Date,
     required: true,
+    unique: true,
   },
   slots: [slotSchema],
 });

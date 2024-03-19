@@ -1,12 +1,22 @@
 import { gql, useSubscription } from "@apollo/client";
 import ICoiffeur from "@/types/Coiffeur";
 
+export const workingDays = `
+  workingDays {
+    dayOfWeek
+    morningSlots
+    afternoonSlots
+  }
+`;
+
 export const GET_COIFFEURS = gql`
   query {
     coiffeurs {
       id
       nom
       prenom
+      urlImage
+      ${workingDays}
       joursTravail {
         date
         slots {
@@ -29,7 +39,9 @@ export const COIFFEUR_UPDATED_SUBSCRIPTION = gql`
       coiffeur {
         id
         nom
+        urlImage
         prenom
+        ${workingDays}
         joursTravail {
           date
           slots {

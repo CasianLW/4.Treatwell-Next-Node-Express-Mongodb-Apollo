@@ -14,7 +14,7 @@ const slotSchema = new mongoose.Schema({
     default: function () {
       return uuidv4(); // Generates a universally unique identifier
     },
-    unique: true,
+    // unique: true,
   },
   // reservationId: {
   //   type: String,
@@ -27,20 +27,11 @@ const slotSchema = new mongoose.Schema({
   // },
 });
 
-// const daySchema = new mongoose.Schema({
-//   date: Date, // Represents a specific day
-//   slots: [
-//     {
-//       type: Number, // Represents a specific 15-minute slot within the day
-//       default: [], // By default, all slots are available (empty array means all slots are open)
-//     },
-//   ],
-// });
 const daySchema = new mongoose.Schema({
   date: {
     type: Date,
     required: true,
-    unique: true,
+    // unique: true,
   },
   slots: [slotSchema],
 });
@@ -50,6 +41,44 @@ const CoiffeurSchema = new mongoose.Schema({
   prenom: String,
   urlImage: String,
   joursTravail: [daySchema],
+  workingDays: {
+    type: [
+      {
+        dayOfWeek: {
+          type: String, // ou Number si vous préférez représenter le jour par un nombre
+          enum: [
+            "Lundi",
+            "Mardi",
+            "Mercredi",
+            "Jeudi",
+            "Vendredi",
+            "Samedi",
+            "Dimanche",
+          ], // Assurez-vous que seuls les jours de la semaine valides sont autorisés
+        },
+        morningSlots: {
+          type: [Number], // Tableau de créneaux pour le matin
+          default: Array.from({ length: 16 }, (_, i) => i + 1), // Par défaut à [1, 2, ..., 16]
+        },
+        afternoonSlots: {
+          type: [Number], // Tableau de créneaux pour l'après-midi
+          default: Array.from({ length: 16 }, (_, i) => i + 1), // Par défaut à [1, 2, ..., 16]
+        },
+      },
+    ],
+    default: () => {
+      // Définit les jours de travail par défaut pour toute la semaine
+      return [
+        { dayOfWeek: "Lundi" },
+        { dayOfWeek: "Mardi" },
+        { dayOfWeek: "Mercredi" },
+        { dayOfWeek: "Jeudi" },
+        { dayOfWeek: "Vendredi" },
+        { dayOfWeek: "Samedi" },
+        { dayOfWeek: "Dimanche" },
+      ];
+    },
+  },
 });
 
 module.exports = mongoose.model("Coiffeur", CoiffeurSchema);

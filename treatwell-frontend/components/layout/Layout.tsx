@@ -1,19 +1,18 @@
-import { FC, ReactNode, useEffect } from "react";
+import { FC, ReactNode } from "react";
 import Head from "next/head";
 import ErrorDisplay from "../ErrorDisplay";
-import { ErrorProvider, useError } from "@/contexts/ErrorContext";
-import { setHandleApolloError } from "@/lib/apolloClient";
+import { ErrorProvider } from "@/contexts/ErrorContext";
 
 type LayoutProps = {
   children: ReactNode;
-  title?: string; // Optional title prop for dynamic page titles
+  title?: string;
   description?: string;
 };
 
 const Layout: FC<LayoutProps> = ({
   children,
   title = "Default Title",
-  description = "Default descritpion",
+  description = "Default description",
 }) => {
   return (
     <>
@@ -22,7 +21,6 @@ const Layout: FC<LayoutProps> = ({
           <title>{title}</title>
           <meta name="description" content={description} />
           <link rel="icon" href="/favicon.ico" />
-          {/* Add any other head elements here */}
         </Head>
         <nav>
           <ul>
@@ -37,9 +35,8 @@ const Layout: FC<LayoutProps> = ({
             </li>
           </ul>
         </nav>
-        <main>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <ErrorDisplay />
-
           {children}
         </main>
       </ErrorProvider>

@@ -3,16 +3,16 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
+  /* --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --background-end-rgb: 255, 255, 255; */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
+    /* --foreground-rgb: 255, 255, 255;
     --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0; */
   }
 }
 
@@ -30,4 +30,23 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/* DatePicker */
+
+.react-datepicker-wrapper,
+.react-datepicker__input-container {
+  display: block;
+  /* width: 50%; */
+  margin-right: auto;
+}
+
+.react-datepicker__input-container input {
+  border: 1px solid;
+  border-color: hsl(0, 0%, 80%);
+  text-align: left;
+  padding-left: 8px;
+  border-radius: 0.375rem;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }

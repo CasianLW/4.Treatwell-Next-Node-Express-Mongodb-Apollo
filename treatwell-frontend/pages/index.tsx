@@ -3,6 +3,7 @@ import BookingComponent from "@/components/BookingComponent";
 import CoiffeursListComponent from "@/components/CoiffeursListComponent";
 import { useState } from "react";
 import { ISlot } from "@/types/Coiffeur";
+import { parseSlotNumber } from "@/helpers/format-values";
 
 export default function Home() {
   interface IFormDataCoiffeur {
@@ -55,16 +56,6 @@ export default function Home() {
   };
 
   // Keep the parseSlotNumber function definition outside of the Home function to avoid re-creating it on every render
-  const parseSlotNumber = (inputValue: string) => {
-    const number = parseInt(inputValue, 10);
-    // Assume slots per day is limited from 1 to 32 (8 hours by 15 minutes)
-    if (Number.isNaN(number) || number < 1) {
-      return 1;
-    } else if (number > 32) {
-      return 32;
-    }
-    return number;
-  };
 
   // Check if all required form data is provided
   const isFormValid =
@@ -77,7 +68,7 @@ export default function Home() {
     <div>
       <div>Content here</div>
 
-      <form>
+      {/* <form>
         <label htmlFor="coiffeurId">Coiffeur ID:</label>
         <input
           id="coiffeurId"
@@ -98,7 +89,6 @@ export default function Home() {
           }
           onChange={(e) => handleInputChange(e, "date")}
         />
-        {/* ... other input elements ... */}
         {formDataCoiffeur.slots.map((slot, index) => (
           <div key={index}>
             <label>Slot {index + 1}:</label>
@@ -130,17 +120,17 @@ export default function Home() {
             />
           </div>
         ))}
-      </form>
+      </form> */}
 
-      {isFormValid && (
+      {/* {isFormValid && (
         <BookingComponent
           date={formDataCoiffeur.date}
           coiffeurId={formDataCoiffeur.coiffeurId}
           slots={formDataCoiffeur.slots}
         />
-      )}
+      )} */}
 
-      <h2>Coiffeurs list</h2>
+      <h2 className="font-semibold text-xl text-center">Coiffeurs list</h2>
       <CoiffeursListComponent />
     </div>
   );

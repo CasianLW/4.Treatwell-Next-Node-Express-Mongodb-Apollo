@@ -6,6 +6,12 @@ export interface ISlot {
   reservationId?: string;
 }
 
+export interface IWorkingDay {
+  dayOfWeek: string;
+  morningSlots: number[];
+  afternoonSlots: number[];
+}
+
 export interface IDay {
   date: Date | number | string;
   slots: ISlot[];
@@ -17,6 +23,7 @@ interface ICoiffeur extends Document {
   prenom: string;
   urlImage: string;
   joursTravail: IDay[];
+  workingDays: IWorkingDay[];
 }
 
 export default ICoiffeur;

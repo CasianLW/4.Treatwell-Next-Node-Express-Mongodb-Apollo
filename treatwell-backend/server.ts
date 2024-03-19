@@ -45,6 +45,11 @@ const typeDefs = gql`
     date: String
     slots: [Slot]
   }
+  type WorkingDay {
+    dayOfWeek: String!
+    morningSlots: [Int!]!
+    afternoonSlots: [Int!]!
+  }
 
   input SlotInput {
     slotNumber: Int!
@@ -58,12 +63,19 @@ const typeDefs = gql`
     slots: [SlotInput]
   }
 
+  input WorkingDayInput {
+    dayOfWeek: String!
+    morningSlots: [Int!]!
+    afternoonSlots: [Int!]!
+  }
+
   type Coiffeur {
     id: ID!
     nom: String
     prenom: String
     urlImage: String
     joursTravail: [Day]
+    workingDays: [WorkingDay]
   }
 
   type Query {
@@ -73,10 +85,11 @@ const typeDefs = gql`
 
   type Mutation {
     addCoiffeur(
-      nom: String!
-      prenom: String!
+      nom: String
+      prenom: String
       urlImage: String
       joursTravail: [DayInput]
+      workingDays: [WorkingDayInput]
     ): Coiffeur
 
     updateCoiffeur(
@@ -85,6 +98,7 @@ const typeDefs = gql`
       prenom: String
       urlImage: String
       joursTravail: [DayInput]
+      workingDays: [WorkingDayInput]
     ): Coiffeur
 
     bookSlots(coiffeurId: ID!, date: String!, slots: [SlotInput!]!): Coiffeur
@@ -125,7 +139,10 @@ const resolvers = {
     },
   },
   Mutation: {
-    addCoiffeur: async (_, { nom, prenom, urlImage, joursTravail }) => {
+    addCoiffeur: async (
+      _,
+      { nom, prenom, urlImage, joursTravail, workingDays }
+    ) => {
       try {
         const formattedJoursTravail = joursTravail.map((jour) => ({
           date: new Date(jour.date),
@@ -137,6 +154,7 @@ const resolvers = {
           prenom,
           urlImage,
           joursTravail: formattedJoursTravail,
+          workingDays,
         });
 
         await newCoiffeur.save();
@@ -146,9 +164,12 @@ const resolvers = {
         throw new Error("Failed to create a new coiffeur.");
       }
     },
-    updateCoiffeur: async (_, { id, nom, prenom, urlImage, joursTravail }) => {
+    updateCoiffeur: async (
+      _,
+      { id, nom, prenom, urlImage, joursTravail, workingDays }
+    ) => {
       try {
-        const updateData = { nom, prenom, urlImage, joursTravail };
+        const updateData = { nom, prenom, urlImage, joursTravail, workingDays };
 
         const updatedCoiffeur = await Coiffeur.findByIdAndUpdate(
           id,

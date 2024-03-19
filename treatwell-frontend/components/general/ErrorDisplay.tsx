@@ -1,6 +1,6 @@
 // components/ErrorDisplay.tsx
 import React, { FC } from "react";
-import { useError } from "../contexts/ErrorContext";
+import { useError } from "../../contexts/ErrorContext";
 
 const ErrorDisplay: FC = () => {
   const { error } = useError();

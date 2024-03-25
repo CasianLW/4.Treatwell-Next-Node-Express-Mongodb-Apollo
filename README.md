@@ -4,6 +4,18 @@
 
 **Technologies**: MongoDB, GraphQL, Node.js, Express, Next.js.
 
+#### Installation
+
+For both frontend and backend:
+
+- npm i
+- .env configurations (.env.test for back also)
+  (for back .env you will need https://www.mongodb.com/ or contact me i will give my connection string)
+- npm run dev for front
+- node server.ts & node test for back
+
+(may came back to improuve install instructions later)
+
 #### Fonctionnalités Clés:
 
 1. **Page d'Accueil**:

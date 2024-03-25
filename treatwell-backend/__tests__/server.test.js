@@ -1,5 +1,4 @@
-describe("Sample Test", () => {
-  it("should test that true === true", () => {
-    expect(true).toBe(true);
-  });
+// server.test.ts
+test("True is truthy", () => {
+  expect(true).toBe(true);
 });

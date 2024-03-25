@@ -19,6 +19,18 @@ const COIFFEUR_UPDATED = "COIFFEUR_UPDATED";
 
 const debug = process.env.NEXT_PUBLIC_DEBUG === "true";
 
+function formatDateToYYYYMMDD(date) {
+  if (!(date instanceof Date)) {
+    throw new TypeError("Provided input is not a Date object.");
+  }
+
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, "0"); // +1 because getMonth() returns 0-11
+  const day = date.getDate().toString().padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 // MongoDB connection
 mongoose
   .connect(process.env.MONGODB_URI, {
@@ -144,8 +156,12 @@ const resolvers = {
       { nom, prenom, urlImage, joursTravail, workingDays }
     ) => {
       try {
+        if (!Array.isArray(joursTravail)) {
+          throw new Error("joursTravail must be an array");
+        }
+
         const formattedJoursTravail = joursTravail.map((jour) => ({
-          date: new Date(jour.date),
+          date: formatDateToYYYYMMDD(new Date(jour.date)),
           slots: jour.slots,
         }));
 
@@ -190,11 +206,29 @@ const resolvers = {
 
     bookSlots: async (_, { coiffeurId, date, slots }) => {
       try {
+        if (!coiffeurId) throw new UserInputError("Missing Coiffeur ID.");
         if (slots.length === 0) {
           throw new UserInputError("Slots array cannot be empty.", {
             errorCode: 400,
           });
         }
+        // Date Validation
+        if (
+          !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+          isNaN(new Date(date).getTime())
+        ) {
+          throw new UserInputError(
+            "Invalid date format. Please use YYYY-MM-DD."
+          );
+        }
+
+        // Email Validation for each slot
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        slots.forEach((slot) => {
+          if (!emailRegex.test(slot.email)) {
+            throw new UserInputError(`Invalid email format: ${slot.email}`);
+          }
+        });
 
         const coiffeur = await Coiffeur.findById(coiffeurId);
         if (!coiffeur) {
@@ -276,9 +310,22 @@ const resolvers = {
       { coiffeurId, date, reservationId, email }
     ) => {
       try {
+        if (
+          !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+          isNaN(new Date(date).getTime())
+        ) {
+          throw new UserInputError(
+            "Invalid date format. Please use YYYY-MM-DD."
+          );
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          throw new UserInputError(`Invalid email format: ${email}`);
+        }
         const coiffeur = await Coiffeur.findOne({
           _id: coiffeurId,
-          "joursTravail.date": new Date(date),
+          "joursTravail.date": formatDateToYYYYMMDD(new Date(date)),
+          // "joursTravail.date": new Date(date),
         });
 
         if (!coiffeur) {
@@ -307,7 +354,7 @@ const resolvers = {
 
         coiffeur.joursTravail[dayIndex].slots.splice(slotIndex, 1);
 
-        console.log(`Publishing update for coiffeurId: ${coiffeurId}`);
+        // console.log(`Publishing update for coiffeurId: ${coiffeurId}`);
 
         pubsub.publish(COIFFEUR_UPDATED, {
           coiffeurUpdated: {
@@ -340,14 +387,18 @@ const schema = makeExecutableSchema({ typeDefs, resolvers });
 const app = express();
 const httpServer = createServer(app);
 
-const startServer = async () => {
-  const apolloServer = new ApolloServer({
-    schema,
-    context: ({ req, res }) => ({ req, res, pubsub }),
-  });
+const apolloServer = new ApolloServer({
+  schema,
+  context: ({ req, res }) => ({ req, res, pubsub }),
+});
 
+// app.post("/graphql", (req, res) => {
+//   res.json({ message: "GraphQL route reached" });
+// });
+
+const startServer = async () => {
   await apolloServer.start();
-  apolloServer.applyMiddleware({ app });
+  apolloServer.applyMiddleware({ app, path: "/graphql" });
 
   SubscriptionServer.create(
     { schema, execute, subscribe },
@@ -362,4 +413,40 @@ const startServer = async () => {
   });
 };
 
-startServer().catch((error) => console.error("Error starting server:", error));
+if (process.env.NODE_ENV !== "test") {
+  startServer().catch((error) =>
+    console.error("Error starting server:", error)
+  );
+}
+
+module.exports = {
+  app,
+  startServer,
+  typeDefs,
+  resolvers,
+  formatDateToYYYYMMDD,
+};
+
+// const startServer = async () => {
+//   const apolloServer = new ApolloServer({
+//     schema,
+//     context: ({ req, res }) => ({ req, res, pubsub }),
+//   });
+
+//   await apolloServer.start();
+//   apolloServer.applyMiddleware({ app });
+
+//   SubscriptionServer.create(
+//     { schema, execute, subscribe },
+//     { server: httpServer, path: apolloServer.graphqlPath }
+//   );
+
+//   const PORT = process.env.PORT || 4000;
+//   httpServer.listen(PORT, () => {
+//     console.log(
+//       `Server is now running on http://localhost:${PORT}${apolloServer.graphqlPath}`
+//     );
+//   });
+// };
+
+// startServer().catch((error) => console.error("Error starting server:", error));

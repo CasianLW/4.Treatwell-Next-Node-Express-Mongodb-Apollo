@@ -9,7 +9,9 @@ import "./globals.css";
 const MyApp = ({ Component, pageProps }: AppProps) => {
   return (
     <ApolloProvider client={apolloClient}>
-      <Layout description="Barber shop webste" title="Barber reservation">
+      <Layout
+      // description="Barber shop webste" title="Barber reservation"
+      >
         <Component {...pageProps} />
       </Layout>
     </ApolloProvider>
